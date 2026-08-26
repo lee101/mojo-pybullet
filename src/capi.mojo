@@ -231,13 +231,16 @@ def mpb_ray_test_batch(starts_addr: Int, ends_addr: Int, nrays: Int,
     var fractions = fp(fractions_addr)
     var points = fp(points_addr)
     var normals = fp(normals_addr)
-    for r in range(nrays):
+    @parameter
+    def ray_one(r: Int):
         var sx = starts[r * 3]
         var sy = starts[r * 3 + 1]
         var sz = starts[r * 3 + 2]
         var dx = ends[r * 3] - sx
         var dy = ends[r * 3 + 1] - sy
         var dz = ends[r * 3 + 2] - sz
+        var aa = dx * dx + dy * dy + dz * dz
+        var inv_aa = 1.0 / aa if aa > 0.0 else 0.0
         var best = 1.0
         var best_id = Int64(-1)
         var bnx = 0.0
@@ -255,13 +258,12 @@ def mpb_ray_test_batch(starts_addr: Int, ends_addr: Int, nrays: Int,
                 var ox = sx - pos[body * 3]
                 var oy = sy - pos[body * 3 + 1]
                 var oz = sz - pos[body * 3 + 2]
-                var aa = dx * dx + dy * dy + dz * dz
                 var bb = ox * dx + oy * dy + oz * dz
                 var radius = data[body * 4]
                 var cc = ox * ox + oy * oy + oz * oz - radius * radius
                 var disc = bb * bb - aa * cc
                 if aa > 0.0 and disc >= 0.0:
-                    candidate = (-bb - sqrt(disc)) / aa
+                    candidate = (-bb - sqrt(disc)) * inv_aa
                     if candidate >= 0.0 and candidate <= best:
                         var hx = sx + candidate * dx - pos[body * 3]
                         var hy = sy + candidate * dy - pos[body * 3 + 1]
@@ -363,6 +365,23 @@ def mpb_ray_test_batch(starts_addr: Int, ends_addr: Int, nrays: Int,
                 points[r * 3 + k] = 0.0
                 normals[r * 3 + k] = 0.0
 
+    if nrays >= 2048:
+        comptime RAYS_PER_TASK = 256
+
+        @parameter
+        def ray_chunk(chunk: Int):
+            var begin = chunk * RAYS_PER_TASK
+            var end = min(begin + RAYS_PER_TASK, nrays)
+            for r in range(begin, end):
+                ray_one(r)
+
+        sync_parallelize[ray_chunk](
+            (nrays + RAYS_PER_TASK - 1) // RAYS_PER_TASK
+        )
+    else:
+        for r in range(nrays):
+            ray_one(r)
+
 
 def ray_test_gpu_kernel(
     starts: FPtr, ends: FPtr, nrays: Int64, types: IPtr, data: FPtr,
@@ -378,6 +397,8 @@ def ray_test_gpu_kernel(
     var dx = ends[r * 3] - sx
     var dy = ends[r * 3 + 1] - sy
     var dz = ends[r * 3 + 2] - sz
+    var aa = dx * dx + dy * dy + dz * dz
+    var inv_aa = 1.0 / aa if aa > 0.0 else 0.0
     var best = 1.0
     var best_id = Int64(-1)
     var bnx = 0.0
@@ -395,13 +416,12 @@ def ray_test_gpu_kernel(
             var ox = sx - pos[body * 3]
             var oy = sy - pos[body * 3 + 1]
             var oz = sz - pos[body * 3 + 2]
-            var aa = dx * dx + dy * dy + dz * dz
             var bb = ox * dx + oy * dy + oz * dz
             var radius = data[body * 4]
             var cc = ox * ox + oy * oy + oz * oz - radius * radius
             var disc = bb * bb - aa * cc
             if aa > 0.0 and disc >= 0.0:
-                candidate = (-bb - sqrt(disc)) / aa
+                candidate = (-bb - sqrt(disc)) * inv_aa
                 if candidate >= 0.0 and candidate <= best:
                     var hx = sx + candidate * dx - pos[body * 3]
                     var hy = sy + candidate * dy - pos[body * 3 + 1]

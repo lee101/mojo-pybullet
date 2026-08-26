@@ -90,7 +90,7 @@ Run the checked-in version with
 ## Correctness
 
 The test suite runs the Mojo implementation and conda-forge PyBullet on
-identical worlds. Its 29 tests assert numerical parity for contact positions,
+identical worlds. Its 31 tests assert numerical parity for contact positions,
 normals and signed distances; rotated AABBs; ray hit IDs, fractions, points and
 normals; transforms; free-fall trajectories; external forces; dynamics
 properties; and resting sphere-plane contact. They also cover a SIMD remainder,
@@ -100,7 +100,7 @@ for Bullet's convex margin.
 
 ```bash
 pixi run test
-# 29 passed
+# 31 passed
 ```
 
 ## Benchmarks
@@ -112,12 +112,13 @@ result tuple construction and ctypes overhead.
 
 | Case | mojo-pybullet | PyBullet | Relative |
 |---|---:|---:|---:|
-| `rayTestBatch`, 8,192 rays x 64 bodies | 20.67 ms | 24.20 ms | 1.17x faster |
-| `rayTestBatch` GPU, 8,192 rays x 64 bodies | 8.78 ms | 24.89 ms | 2.84x faster |
-| `getClosestPoints`, 20,000 calls | 108.79 ms | 125.06 ms | 1.15x faster |
-| `stepSimulation`, 128 bodies x 100 steps | 7.45 ms | 16.15 ms | 2.17x faster |
+| `rayTestBatch`, 8,192 rays x 64 bodies | 14.22 ms | 23.32 ms | 1.64x faster |
+| `rayTestBatch` GPU, 8,192 rays x 64 bodies | 9.18 ms | 24.33 ms | 2.65x faster |
+| `getClosestPoints`, 20,000 calls | 109.23 ms | 130.27 ms | 1.19x faster |
+| `stepSimulation`, 128 bodies x 100 steps | 8.78 ms | 12.13 ms | 1.38x faster |
 
-The CPU ray kernel handles the complete batch in one compiled call. The optional
+The CPU ray kernel handles the complete batch in one compiled call and assigns
+batches of at least 2,048 rays to coarse 256-ray parallel tasks. The optional
 GPU ray kernel benefits from reusing body data across many independent rays.
 Closest-point calls reuse
 thread-local result storage and cached zero-copy buffer addresses. Dynamics

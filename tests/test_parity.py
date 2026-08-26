@@ -318,6 +318,23 @@ def test_ray_starting_inside_convex_shape_reports_no_hit(clients):
     assert got == expected
 
 
+@pytest.mark.parametrize("ray_count", [2047, 2048])
+def test_ray_batch_parallel_threshold(ray_count):
+    client = mojo.connect(mojo.DIRECT)
+    try:
+        sphere = mojo.createCollisionShape(
+            mojo.GEOM_SPHERE, radius=1.0, physicsClientId=client
+        )
+        mojo.createMultiBody(0, sphere, physicsClientId=client)
+        starts = np.tile((0.0, 0.0, 2.0), (ray_count, 1))
+        ends = np.tile((0.0, 0.0, -2.0), (ray_count, 1))
+        got = mojo.rayTestBatch(starts, ends, physicsClientId=client)
+        assert len(got) == ray_count
+        assert all(hit[0] == 0 and hit[2] == pytest.approx(0.25) for hit in got)
+    finally:
+        mojo.disconnect(client)
+
+
 def test_transform_helpers_match_pybullet():
     euler = (0.3, -0.7, 1.2)
     q = mojo.getQuaternionFromEuler(euler)
