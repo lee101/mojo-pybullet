@@ -1,8 +1,8 @@
 """Primitive collision detection and rigid-body stepping exposed through a C ABI."""
 
-from std.algorithm import sync_parallelize
+from max.algorithm import sync_parallelize
 from std.gpu import block_dim, block_idx, thread_idx
-from std.gpu.host import DeviceContext
+from max.gpu.host import DeviceContext
 from std.math import sqrt
 from std.sys import simd_width_of as simdwidthof
 
@@ -365,12 +365,12 @@ def mpb_ray_test_batch(starts_addr: Int, ends_addr: Int, nrays: Int,
 
 
 def ray_test_gpu_kernel(
-    starts: FPtr, ends: FPtr, nrays: Int, types: IPtr, data: FPtr,
-    pos: FPtr, orn: FPtr, ids: IPtr, active: IPtr, n: Int,
+    starts: FPtr, ends: FPtr, nrays: Int64, types: IPtr, data: FPtr,
+    pos: FPtr, orn: FPtr, ids: IPtr, active: IPtr, n: Int64,
     hit_ids: IPtr, fractions: FPtr, points: FPtr, normals: FPtr,
 ):
     var r = block_idx.x * block_dim.x + thread_idx.x
-    if r >= nrays:
+    if r >= Int(nrays):
         return
     var sx = starts[r * 3]
     var sy = starts[r * 3 + 1]
@@ -383,7 +383,7 @@ def ray_test_gpu_kernel(
     var bnx = 0.0
     var bny = 0.0
     var bnz = 0.0
-    for body in range(n):
+    for body in range(Int(n)):
         if active[body] == 0:
             continue
         var candidate = 2.0
@@ -534,7 +534,8 @@ def mpb_ray_test_batch_gpu(starts_addr: Int, ends_addr: Int, nrays: Int,
         ctx.enqueue_copy(active, ip(active_addr))
         var block_size = 256
         ctx.enqueue_function[ray_test_gpu_kernel](
-            starts, ends, nrays, types, data, pos, orn, ids, active, n,
+            starts, ends, Int64(nrays), types, data, pos, orn, ids, active,
+            Int64(n),
             hit_ids, fractions, points, normals,
             grid_dim=(nrays + block_size - 1) // block_size,
             block_dim=block_size,
