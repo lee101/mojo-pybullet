@@ -319,7 +319,7 @@ def test_ray_starting_inside_convex_shape_reports_no_hit(clients):
 
 
 @pytest.mark.parametrize("ray_count", [2047, 2048])
-def test_ray_batch_parallel_threshold(ray_count):
+def test_ray_batch_chunk_threshold(ray_count):
     client = mojo.connect(mojo.DIRECT)
     try:
         sphere = mojo.createCollisionShape(
@@ -426,7 +426,7 @@ def test_step_clears_force_and_torque_simd_tail():
 
 
 @pytest.mark.parametrize("body_count", [1023, 1024])
-def test_large_independent_integration_parallel_threshold(body_count):
+def test_large_scale_body_integration(body_count):
     client = mojo.connect(mojo.DIRECT)
     try:
         shape = mojo.createCollisionShape(

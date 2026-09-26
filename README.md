@@ -94,7 +94,7 @@ identical worlds. Its 31 tests assert numerical parity for contact positions,
 normals and signed distances; rotated AABBs; ray hit IDs, fractions, points and
 normals; transforms; free-fall trajectories; external forces; dynamics
 properties; and resting sphere-plane contact. They also cover a SIMD remainder,
-both sides of the parallel integration threshold, the GPU ray path, FFI input
+both sides of the large-batch ray and integration paths, the GPU ray path, FFI input
 validation, and pose/velocity/reset lifecycle behavior. Box comparisons account
 for Bullet's convex margin.
 
@@ -117,14 +117,17 @@ result tuple construction and ctypes overhead.
 | `getClosestPoints`, 20,000 calls | 109.23 ms | 130.27 ms | 1.19x faster |
 | `stepSimulation`, 128 bodies x 100 steps | 8.78 ms | 12.13 ms | 1.38x faster |
 
-The CPU ray kernel handles the complete batch in one compiled call and assigns
-batches of at least 2,048 rays to coarse 256-ray parallel tasks. The optional
-GPU ray kernel benefits from reusing body data across many independent rays.
-Closest-point calls reuse
-thread-local result storage and cached zero-copy buffer addresses. Dynamics
-uses a sphere overlap fast reject, exits solver iterations when no contacts
-remain, and parallelizes sufficiently large independent body integration.
-Force and torque clearing uses native-width float64 SIMD with a scalar tail.
+The CPU ray kernel handles the complete batch in one compiled call and walks it
+in coarse 256-ray chunks from 2,048 rays up. Both it and body integration are
+memory bound rather than compute bound: a ray-body test reads roughly 100 bytes
+of per-body data for a few tens of flops, and integrating one body moves about
+280 bytes of state for roughly 30 flops. Both sit well under one flop per byte,
+so the chunk loop and the integration loop run serially on the calling thread.
+The optional GPU ray kernel benefits from reusing body data across many
+independent rays. Closest-point calls reuse thread-local result storage and
+cached zero-copy buffer addresses. Dynamics uses a sphere overlap fast reject
+and exits solver iterations when no contacts remain. Force and torque clearing
+uses native-width float64 SIMD with a scalar tail.
 
 ## How it works
 

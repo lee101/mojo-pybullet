@@ -1,13 +1,14 @@
 """Primitive collision detection and rigid-body stepping exposed through a C ABI."""
 
-from max.algorithm import sync_parallelize
-from std.gpu import block_dim, block_idx, thread_idx
+from max.gpu import block_dim, block_idx, thread_idx
 from max.gpu.host import DeviceContext
 from std.math import sqrt
 from std.sys import simd_width_of as simdwidthof
 
 comptime FPtr = UnsafePointer[Float64, AnyOrigin[mut=True]]
 comptime IPtr = UnsafePointer[Int64, AnyOrigin[mut=True]]
+
+comptime RAY_CHUNK_MIN = 2048
 
 
 def fp(addr: Int) -> FPtr:
@@ -365,19 +366,12 @@ def mpb_ray_test_batch(starts_addr: Int, ends_addr: Int, nrays: Int,
                 points[r * 3 + k] = 0.0
                 normals[r * 3 + k] = 0.0
 
-    if nrays >= 2048:
-        comptime RAYS_PER_TASK = 256
-
-        @parameter
-        def ray_chunk(chunk: Int):
-            var begin = chunk * RAYS_PER_TASK
-            var end = min(begin + RAYS_PER_TASK, nrays)
-            for r in range(begin, end):
+    if nrays >= RAY_CHUNK_MIN:
+        comptime RAYS_PER_CHUNK = 256
+        for chunk in range((nrays + RAYS_PER_CHUNK - 1) // RAYS_PER_CHUNK):
+            var begin = chunk * RAYS_PER_CHUNK
+            for r in range(begin, min(begin + RAYS_PER_CHUNK, nrays)):
                 ray_one(r)
-
-        sync_parallelize[ray_chunk](
-            (nrays + RAYS_PER_TASK - 1) // RAYS_PER_TASK
-        )
     else:
         for r in range(nrays):
             ray_one(r)
@@ -707,21 +701,12 @@ def mpb_step(types_addr: Int, data_addr: Int, pos_addr: Int, orn_addr: Int,
     var angular_damping = fp(angular_damping_addr)
     var active = ip(active_addr)
     var scratch = fp(scratch_addr)
-    if n >= 1024:
-        @parameter
-        def integrate_one(i: Int):
-            integrate_body(
-                pos, orn, vel, angvel, force, torque, inv_mass, inv_inertia,
-                linear_damping, angular_damping, active, i, gx, gy, gz, dt
-            )
+    for i in range(n):
+        integrate_body(
+            pos, orn, vel, angvel, force, torque, inv_mass, inv_inertia,
+            linear_damping, angular_damping, active, i, gx, gy, gz, dt
+        )
 
-        sync_parallelize[integrate_one](n)
-    else:
-        for i in range(n):
-            integrate_body(
-                pos, orn, vel, angvel, force, torque, inv_mass, inv_inertia,
-                linear_damping, angular_damping, active, i, gx, gy, gz, dt
-            )
     comptime W = simdwidthof[DType.float64]()
     var total = n * 3
     var i = 0
